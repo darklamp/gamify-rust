@@ -1,0 +1,68 @@
+name: gamify-rust
+version: "0.1.0"
+author: Alessandro Villa <alessandro17.villa@mail.polimi.it>
+about: CLI for gamify app.
+args:
+  - config:
+      short: c
+      long: config
+      value_name: FILE
+      about: Sets a custom config file
+      takes_value: true
+  #  - INPUT:
+  #     about: Sets the input file to use
+  #    required: true
+  #   index: 1
+  - verbose:
+      short: v
+      multiple: true
+      about: Sets the level of verbosity (unimplemented)
+subcommands:
+  - admin:
+      about: admin commands
+      subcommands:
+        - create:
+            about: Create a questionnaire.
+            args:
+              - name:
+                  short: n
+                  about: Name of the questionnaire.
+                  required: true
+                  takes_value: true
+              - picture:
+                  short: p
+                  about: Picture for the questionnaire.
+                  required: true
+                  takes_value: true
+              - date:
+                  short: d
+                  about: Date of the questionnaire (MM/DD/YYYY).
+                  required: true
+                  takes_value: true
+              - question:
+                  short: q
+                  about: Questions for the questionnaire.
+                  required: true
+                  multiple: true
+                  takes_value: true
+        - delete:
+            about: Delete a questionnaire.  (unimplemented)
+        - inspect:
+            about: Inspect a questionnaire.  (unimplemented)
+        - list:
+            about: List questionnaires.
+          args:
+            - past:
+                short: p
+                about: If true, get only past questionnaires.
+                default: "false"
+            - start:
+                about: Start of search.
+                default: "0"
+                takes_value: true
+            - size:
+                about: Size of search (0,10,25,100).
+                default: "100"
+                takes_value: true
+  - user:
+      about: unimplemented

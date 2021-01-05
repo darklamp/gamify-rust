@@ -12,6 +12,9 @@ colored = "2.0.0"
 clap = { version = "3.0.0-beta.2", features = ["yaml"] }
 reqwest = { version = "0.10.10", features = ["blocking", "cookies", "json"] }
 lazy_static = "1.4.0"
+serde = { version = "1.0.117", features = ["derive"] }
 serde_yaml = "0.8.14"
 dialoguer = "0.7.1"
 native-dialog = "0.5.2"
+tokio = {version = "1.0.1", features = ["full"]}
+#opener = "0.4.1"

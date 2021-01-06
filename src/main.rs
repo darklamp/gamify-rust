@@ -264,7 +264,7 @@ fn main() {
                     }
                     let mut toks = line.split(' ').fuse();
                     match toks.next() {
-                        Some("b") | Some("back") => {
+                        Some("b") | Some("back") | Some("exit") => {
                             clean_exit();
                         }
 
@@ -335,19 +335,19 @@ fn main() {
                         }
 
                         Some("list") => {
-                            let mut start: String = String::from("");
-                            let mut size: String = String::from("");
-                            let mut past: String = String::from("");
+                            let mut start: String = String::from("0");
+                            let mut size: String = String::from("100");
+                            let mut past: String = String::from("n");
 
                             let mut initialized: [bool; 3] = [false, false, false];
                             loop {
                                 match toks.next() {
                                     Some(a) => match a {
-                                        "default" => {
-                                            start = "0".to_string();
-                                            size = "100".to_string();
-                                            past = "n".to_string();
-                                            initialized = [true, true, true];
+                                        "d" | "default" => {
+                                            initialized[0] = true;
+                                            initialized[1] = true;
+                                            initialized[2] = true;
+
                                             break;
                                         }
                                         "start" => {
@@ -378,15 +378,11 @@ fn main() {
                                             if initialized[2] {
                                                 break;
                                             }
-                                            let x = toks.next();
-                                            if x.is_none() {
-                                                break;
-                                            } else {
-                                                past = x.unwrap().to_string();
+                                                past = "y".to_string();
                                                 initialized[2] = true;
-                                            }
+                                            
                                         }
-                                        _ => break,
+                                        _ => break
                                     },
                                     None => break,
                                 }
@@ -421,16 +417,36 @@ fn main() {
                         }
 
                         Some("inspect") => {
-                            let id: String = Input::new()
-                                .with_prompt("Questionnaire ID [default: 0]")
-                                .default("0".into())
-                                .interact_text()
-                                .unwrap();
-                            let canceled: String = Input::new()
-                                .with_prompt("Canceled users?")
-                                .default("n".into())
-                                .interact_text()
-                                .unwrap();
+                            let mut id: String = String::from("");
+                            let mut canceled: String = String::from("");
+
+                            let mut initialized: [bool; 2] = [false, false];
+                            loop {
+                                match toks.next() {
+                                    Some(a) => {
+                                        id = a.to_string();
+                                        initialized[0] = true;
+                                        initialized[1] = true;
+                                        break;
+                                    }
+                                    None => break,
+                                }
+                            }
+
+                            if !initialized[0] {
+                                id = Input::new()
+                                    .with_prompt("Questionnaire ID [default: 0]")
+                                    .default("0".into())
+                                    .interact_text()
+                                    .unwrap();
+                            }
+                            if !initialized[1] {
+                                canceled = Input::new()
+                                    .with_prompt("Canceled users?")
+                                    .default("n".into())
+                                    .interact_text()
+                                    .unwrap();
+                            }
 
                             let p: bool = canceled.to_lowercase().contains("y");
 
@@ -441,7 +457,7 @@ fn main() {
                                             true => "canceled",
                                             _ => "answered",
                                         };
-                                        println!(
+                                        print!(
                                             "{0} {1} {2}",
                                             "No one".blue(),
                                             word.blue(),
@@ -451,7 +467,9 @@ fn main() {
                                         showAnswers(&client, &id, uId);
                                     }
                                 }
-                                Err(e) => {}
+                                Err(e) => {
+                                    print!("{}", "Error in retrieving data. You probably provided a non-existent id. ಠ_ಠ".bright_red());
+                                }
                             };
                         }
 
@@ -462,9 +480,9 @@ fn main() {
                                 .unwrap();
 
                             if !delete(&client, &id) {
-                                println!("{}", "Deletion failed.".bright_red());
+                                print!("{}", "Deletion failed.".bright_red());
                             } else {
-                                println!(
+                                print!(
                                     "{}{}{}",
                                     "OK! Questionnaire".bright_green(),
                                     &id.to_string().bright_green(),
@@ -482,11 +500,11 @@ fn main() {
                     }
                     print!("\n");
                 }
-                Err(ReadlineError::Interrupted) => {
+                Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => {
                     clean_exit();
                 }
                 _ => {
-                    println!(
+                    print!(
                         "{}",
                         "Error in command. Please enter correct command or press CTRL+C to exit"
                             .bold()
@@ -511,7 +529,7 @@ fn login(client: &Client, username: &String, password: &String) -> Result<String
         .timeout(Duration::from_secs(10))
         .send();
     if res.is_err() {
-        println!(
+        print!(
             "{}{}{}",
             "Server ".bright_red(),
             ENDPOINT::BASE_LINK.bright_red(),
@@ -594,7 +612,7 @@ fn showAnswers(client: &Client, questionnaireId: &String, userId: i32) {
         .send();
 
     if res.is_err() {
-        println!("{}", "Error retrieving answers.".red());
+        print!("{}", "Error retrieving answers.".red());
     } else {
         let r: AnswerList = res.unwrap().json().unwrap();
         println!("{}", r);
@@ -710,6 +728,6 @@ fn create_questionnaire(
 }
 
 fn clean_exit() {
-    println!("{}", "bye <3".bright_blue().italic());
+    println!("\n{}\n", " (ᵟຶ︵ ᵟຶ) bye (ᵟຶ︵ ᵟຶ) ".bright_blue());
     exit(0);
 }

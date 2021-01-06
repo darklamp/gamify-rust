@@ -1,23 +1,16 @@
-use clap::{load_yaml, App};
 use colored::Colorize;
-use dialoguer::{theme::ColorfulTheme, Confirm, Input, MultiSelect, Select};
+use dialoguer::{Confirm, Input, Select};
+use figlet_rs::FIGfont;
 use lazy_static::lazy_static;
 use native_dialog::FileDialog;
 use reqwest::{
     blocking::{multipart, Client},
     StatusCode,
 };
-use rustyline::{error::ReadlineError, Editor};
+use rustyline::error::ReadlineError;
 use serde::Deserialize;
-use serde_yaml::Value;
-use std::{
-    env,
-    fmt::Display,
-    process::exit,
-    sync::{Arc, Mutex, MutexGuard, RwLock, RwLockWriteGuard, TryLockError},
-    time::Duration,
-    vec,
-};
+use std::{env, fmt::Display, process::exit, time::Duration, vec};
+extern crate term_size;
 
 lazy_static! {
     static ref USER_AGENT: String = format!(
@@ -114,24 +107,14 @@ impl Display for AnswerList {
 impl Display for Questionnaire {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let date0: Vec<&str> = self.datetime.split(",").collect();
-        let mut namel: usize = self.name.len();
-        if namel > 30 as usize {
-            namel = 30;
-        }
-        let mut qIdl: usize = self.questionnaireId.to_string().len();
-        if qIdl > 6 as usize {
-            qIdl = 6;
-        }
-        let mut datel: Vec<&str> = Vec::with_capacity(28);
-        datel.push(date0[0]);
-        datel.push(date0[1]);
+        let datel = format!("{} {}", date0[0], date0[1]);
 
         write!(
             f,
             "│ {: ^5} │ {: ^30} │ {: >16} │",
-            &self.questionnaireId.to_string()[0..qIdl].blue(),
-            &self.name[0..namel].bright_blue().bold(),
-            format! {"{:?}{:?}", datel[0], datel[1]},
+            &self.questionnaireId.to_string().blue(),
+            &self.name.bright_blue().bold(),
+            format! {"{}", datel},
         )
     }
 }
@@ -162,34 +145,35 @@ impl Display for User {
 }
 
 fn main() {
-    let logo = r#"     
-     ___           ___           ___                       ___               
-    /  /\         /  /\         /__/\        ___          /  /\        ___   
-   /  /:/_       /  /::\       |  |::\      /  /\        /  /:/_      /__/|  
-  /  /:/ /\     /  /:/\:\      |  |:|:\    /  /:/       /  /:/ /\    |  |:|  
- /  /:/_/::\   /  /:/~/::\   __|__|:|\:\  /__/::\      /  /:/ /:/    |  |:|  
-/__/:/__\/\:\ /__/:/ /:/\:\ /__/::::| \:\ \__\/\:\__  /__/:/ /:/   __|__|:|  
-\  \:\ /~~/:/ \  \:\/:/__\/ \  \:\~~\__\/    \  \:\/\ \  \:\/:/   /__/::::\  
- \  \:\  /:/   \  \::/       \  \:\           \__\::/  \  \::/       ~\~~\:\ 
-  \  \:\/:/     \  \:\        \  \:\          /__/:/    \  \:\         \  \:\
-   \  \::/       \  \:\        \  \:\         \__\/      \  \:\         \__\/
-    \__\/         \__\/         \__\/                     \__\/              "#;
-    println!(
-        "{} {}\n",
-        logo.bold().on_black().bright_blue(),
-        env!("CARGO_PKG_VERSION").bright_blue()
-    );
-    println!("{}\n", "https://github.com/darklamp/gamify-rust".magenta());
-
-    println!(
-        "{}\n",
-        "Press CTRL+C to exit, write b or back to go back, anything to get help."
-            .italic()
-            .white()
-    );
-
+    // read config
     let f = std::fs::File::open("config.yaml").expect("Config file not found");
     let config: Config = serde_yaml::from_reader(f).expect("Config not readable");
+
+    let mut terminal_dimensions;
+    if let Some((w, h)) = term_size::dimensions() {
+        terminal_dimensions = (w, h);
+        if config.debug {
+            println!("Terminal dimensions: {:#?}", terminal_dimensions);
+        }
+    } else {
+        if config.debug {
+            println!("Unable to get term size :(")
+        }
+        terminal_dimensions = (137, 35);
+    }
+
+    println!(
+        "{:~^width$}\n{:^width$}\n{:^width$}\n{:^width$}",
+        " Gamify CLI ".bold().on_black().bold().bright_blue(),
+        env!("CARGO_PKG_VERSION").bright_blue(),
+        "https://github.com/darklamp/gamify-rust".magenta(),
+        "Press CTRL+C to exit or anything to get help."
+            .italic()
+            .white(),
+        width = terminal_dimensions.0,
+    );
+
+    let ascii_font = FIGfont::from_file("resources/isometric3.flf").unwrap();
 
     let mut rl = rustyline::Editor::<()>::new();
 
@@ -216,7 +200,29 @@ fn main() {
         Ok(res) => {
             foo = res.clone();
             role = foo.strip_prefix("/GamifyUser/").unwrap();
-            println!("{}", "Login OK".bold().green());
+            if config.debug {
+                println!("{}", "Login OK".bold().green());
+            }
+            if (config.username.len() + 3) <= (terminal_dimensions.0 as f64 / 13.6) as usize {
+                println!(
+                    "{}",
+                    ascii_font
+                        .convert(format!("Hi {}", config.username).as_str())
+                        .unwrap()
+                        .to_string()
+                        .blue()
+                );
+            } else {
+                println!(
+                    "{}\n{}",
+                    ascii_font.convert("Hi").unwrap().to_string().blue(),
+                    ascii_font
+                        .convert(format!("{}", config.username).as_str())
+                        .unwrap()
+                        .to_string()
+                        .blue()
+                );
+            }
         }
         _ => {
             println!("{}", "Login KO".bold().red());
@@ -409,7 +415,7 @@ fn main() {
                             }
                             let p: bool = (&past).to_lowercase().contains(|c| c == 'y' || c == 't');
 
-                            if !list(&client, &start, &size, p) {
+                            if !list(&client, &start, &size, p, &terminal_dimensions) {
                                 println!("{}", "Error retrieving list".red());
                             }
                         }
@@ -478,7 +484,7 @@ fn main() {
                 }
                 Err(ReadlineError::Interrupted) => {
                     clean_exit();
-                },
+                }
                 _ => {
                     println!(
                         "{}",
@@ -520,7 +526,13 @@ fn login(client: &Client, username: &String, password: &String) -> Result<String
     };
 }
 
-fn list(client: &Client, start: &String, size: &String, past: bool) -> bool {
+fn list(
+    client: &Client,
+    start: &String,
+    size: &String,
+    past: bool,
+    terminal_dimensions: &(usize, usize),
+) -> bool {
     let params = [
         ("start", start),
         ("size", size),
@@ -535,11 +547,31 @@ fn list(client: &Client, start: &String, size: &String, past: bool) -> bool {
     match res1.status() {
         StatusCode::OK => {
             let result: Vec<Questionnaire> = res1.json().unwrap();
-            println!("┌─ ID ──┬───────────── Name ─────────────┬────── Date ──────┐");
+            println!(
+                "{:^width$}",
+                "┌─ ID ──┬───────────── Name ─────────────┬────── Date ──────┐",
+                width = terminal_dimensions.0
+            );
             for r in result {
-                println!("{}", r);
+                let date0: Vec<&str> = r.datetime.split(",").collect();
+                let datel = format!("{} {}", date0[0], date0[1]);
+
+                println!(
+                    "{:^width$}",
+                    format!(
+                        "{}{}{}",
+                        format!("│ {:^5} ", r.questionnaireId.to_string().blue()),
+                        format!("│ {:^30} ", r.name.bright_blue().bold()),
+                        format!("│ {:>16} │", format! {"{}", datel})
+                    ),
+                    width = terminal_dimensions.0 + 20
+                );
             }
-            println!("└─ ID ──┴───────────── Name ─────────────┴────── Date ──────┘");
+            println!(
+                "{:^width$}",
+                "└─ ID ──┴───────────── Name ─────────────┴────── Date ──────┘",
+                width = terminal_dimensions.0
+            );
             return true;
         }
         _ => return false,

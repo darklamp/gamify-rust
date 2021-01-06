@@ -372,6 +372,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "figlet-rs"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "59893843a423e9726b35a3110cd2be573bc9deddc553b0ff286107189b02d1aa"
+
+[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -486,12 +492,14 @@ dependencies = [
  "clap",
  "colored",
  "dialoguer",
+ "figlet-rs",
  "lazy_static",
  "native-dialog",
  "reqwest",
  "rustyline",
  "serde",
  "serde_yaml",
+ "term_size",
  "tokio 1.0.1",
 ]
 
@@ -1534,6 +1542,17 @@ dependencies = [
  "redox_syscall",
  "remove_dir_all",
  "winapi 0.3.9",
+]
+
+[[package]]
+name = "term_size"
+version = "1.0.0-beta1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8a17d8699e154863becdf18e4fd28bd0be27ca72856f54daf75c00f2566898f"
+dependencies = [
+ "kernel32-sys",
+ "libc",
+ "winapi 0.2.8",
 ]
 
 [[package]]

@@ -1,3 +1,4 @@
 /target
 workspace.code-workspace
 config.yaml
+.gamify_history.txt

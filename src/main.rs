@@ -1,6 +1,6 @@
 use clap::{load_yaml, App};
 use colored::Colorize;
-use dialoguer::{Confirm, Input, MultiSelect};
+use dialoguer::{theme::ColorfulTheme, Confirm, Input, MultiSelect, Select};
 use lazy_static::lazy_static;
 use native_dialog::FileDialog;
 use reqwest::{
@@ -16,6 +16,7 @@ use std::{
     process::exit,
     sync::{Arc, Mutex, MutexGuard, RwLock, RwLockWriteGuard, TryLockError},
     time::Duration,
+    vec,
 };
 
 lazy_static! {
@@ -34,6 +35,10 @@ impl ENDPOINT {
     const LOGIN: &'static str = "CheckLogin";
     const ADMIN_LIST: &'static str = "admin/listQuestionnaires";
     const ADMIN_CREATE: &'static str = "admin/create";
+    const ADMIN_DELETE: &'static str = "admin/delete";
+    const ADMIN_INSPECT: &'static str = "admin/listQuestionnaireCompletedUsers";
+    const ADMIN_INSPECT_CANCELED: &'static str = "admin/listQuestionnaireCanceledUsers";
+    const ADMIN_ANSWERS_RETRIEVAL: &'static str = "admin/getAnswers";
 }
 
 #[derive(Deserialize)]
@@ -42,6 +47,68 @@ struct Questionnaire {
     datetime: String,
     image: String,
     name: String,
+}
+
+#[derive(Deserialize)]
+struct AnswerList {
+    stats: Vec<Option<String>>,
+    opt: Vec<OptionalAnswer>,
+}
+
+#[derive(Deserialize)]
+struct OptionalAnswer {
+    question: String,
+    content: String,
+}
+
+impl std::fmt::Debug for OptionalAnswer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Question: {0}, Answer: {1}\n",
+            self.question, self.content
+        )
+    }
+}
+#[derive(Deserialize)]
+struct User {
+    userId: i32,
+    birth: String,
+    sex: String,
+    username: String,
+}
+
+impl Display for AnswerList {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut stats: Vec<String> = vec![];
+        for s in &self.stats {
+            let mut sp: String = "N/A".to_string();
+            if s.is_some() {
+                sp = s.as_deref().unwrap().to_string();
+            }
+            stats.push(sp);
+        }
+        let mut _x = write!(
+            f,
+            "{}",
+            "\n ~~~~~~~ Statistical answers ~~~~~~\n\n"
+                .bold()
+                .bright_blue()
+        );
+        _x = write!(
+            f,
+            "Age: {}, Sex: {}, Experience: {}\n\n",
+            stats[0], stats[1], stats[2]
+        );
+        _x = write!(
+            f,
+            "{}",
+            " ~~~~~~~   Optional answers  ~~~~~~\n\n"
+                .bold()
+                .bright_blue()
+        );
+        write!(f, "{:?}", self.opt)
+    }
 }
 
 impl Display for Questionnaire {
@@ -64,28 +131,77 @@ impl Display for Questionnaire {
             "│ {: ^5} │ {: ^30} │ {: >16} │",
             &self.questionnaireId.to_string()[0..qIdl].blue(),
             &self.name[0..namel].bright_blue().bold(),
-            format!{"{:?}{:?}", datel[0], datel[1]},
+            format! {"{:?}{:?}", datel[0], datel[1]},
+        )
+    }
+}
+#[derive(Debug, Deserialize)]
+struct Config {
+    username: String,
+    password: String,
+    debug: bool,
+    history: bool,
+}
+
+impl Display for User {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let date0: Vec<&str> = self.birth.split(",").collect();
+        let mut datel: Vec<&str> = Vec::with_capacity(28);
+        datel.push(date0[0]);
+        datel.push(date0[1]);
+
+        write!(
+            f,
+            "│ {: ^5} │ {: ^30} │ {: >16} │ {: ^7} │",
+            &self.userId.to_string(),
+            &self.username,
+            format! {"{:?}{:?}", datel[0], datel[1]},
+            &self.sex
         )
     }
 }
 
 fn main() {
+    let logo = r#"     
+     ___           ___           ___                       ___               
+    /  /\         /  /\         /__/\        ___          /  /\        ___   
+   /  /:/_       /  /::\       |  |::\      /  /\        /  /:/_      /__/|  
+  /  /:/ /\     /  /:/\:\      |  |:|:\    /  /:/       /  /:/ /\    |  |:|  
+ /  /:/_/::\   /  /:/~/::\   __|__|:|\:\  /__/::\      /  /:/ /:/    |  |:|  
+/__/:/__\/\:\ /__/:/ /:/\:\ /__/::::| \:\ \__\/\:\__  /__/:/ /:/   __|__|:|  
+\  \:\ /~~/:/ \  \:\/:/__\/ \  \:\~~\__\/    \  \:\/\ \  \:\/:/   /__/::::\  
+ \  \:\  /:/   \  \::/       \  \:\           \__\::/  \  \::/       ~\~~\:\ 
+  \  \:\/:/     \  \:\        \  \:\          /__/:/    \  \:\         \  \:\
+   \  \::/       \  \:\        \  \:\         \__\/      \  \:\         \__\/
+    \__\/         \__\/         \__\/                     \__\/              "#;
     println!(
-        "{} {}",
-        "Gamify Admin CLI v.".bold().bright_blue(),
+        "{} {}\n",
+        logo.bold().on_black().bright_blue(),
         env!("CARGO_PKG_VERSION").bright_blue()
     );
+    println!("{}\n", "https://github.com/darklamp/gamify-rust".magenta());
+
     println!(
-        "{}",
-        "https://github.com/darklamp/gamify-rust".italic().white()
+        "{}\n",
+        "Press CTRL+C to exit, write b or back to go back, anything to get help."
+            .italic()
+            .white()
     );
 
-    let mut rl = Arc::new(Mutex::new(rustyline::Editor::<()>::new()));
-    let yaml = load_yaml!("../cli.yaml");
-    let matches = App::from(yaml).get_matches();
     let f = std::fs::File::open("config.yaml").expect("Config file not found");
-    let config: Value = serde_yaml::from_reader(f).expect("Config not readable");
-    let mut is_logged_in: bool = false;
+    let config: Config = serde_yaml::from_reader(f).expect("Config not readable");
+
+    let mut rl = rustyline::Editor::<()>::new();
+
+    // try and load history file if history option is on
+    if config.history {
+        if rl.load_history(".gamify_history.txt").is_err() && config.debug {
+            println!("No previous history.");
+        }
+    }
+
+    //let yaml = load_yaml!("../cli.yaml");
+    // let matches = App::from(yaml).get_matches();
 
     let client = reqwest::blocking::Client::builder()
         .user_agent(&*USER_AGENT)
@@ -93,16 +209,19 @@ fn main() {
         .build()
         .expect("Error in client creation");
 
-    if login(
-        &client,
-        config["username"].as_str().unwrap().to_string(),
-        config["password"].as_str().unwrap().to_string(),
-    ) {
-        println!("{}", "Login OK".bold().green());
-        is_logged_in = true;
-    } else {
-        println!("{}", "Login KO".bold().red());
-        clean_exit();
+    let mut role: &str = "admin";
+    let foo: String;
+
+    match login(&client, &config.username, &config.password) {
+        Ok(res) => {
+            foo = res.clone();
+            role = foo.strip_prefix("/GamifyUser/").unwrap();
+            println!("{}", "Login OK".bold().green());
+        }
+        _ => {
+            println!("{}", "Login KO".bold().red());
+            clean_exit();
+        }
     }
 
     /*   if let Some(ref matches) = matches.subcommand_matches("admin") {
@@ -119,59 +238,31 @@ fn main() {
         }
     }*/
 
-    let commands_tree: Arc<RwLock<Vec<&str>>> = Arc::new(RwLock::new(vec![]));
     let help = |st| match st {
         "na" => println!("{}", "Available commands: admin, user.".yellow()),
         "admin" => print!(
             "{}",
-            "Available commands: create, list, delete, back.".yellow()
+            "Available commands: create, list, delete, inspect, back.".yellow()
         ),
         _ => print!("{}", "Available commands: admin, user.".yellow()),
     };
-    let get_formatted_readline_prompt = |cm: &RwLockWriteGuard<Vec<&str>>| {
-        let mut out = ">> ".bright_blue().to_string();
-        for c in (**cm).as_slice() {
-            out = format!("{}{}", c, out);
-        }
-        out
-    };
-    let read = |promptstr| {
-        let x = rl.try_lock();
-        match x {
-            Ok(mut ed) => {
-                let cmtree = commands_tree.write();
-                match cmtree {
-                    Ok(mut cm) => {
-                        if promptstr != "" {
-                            cm.push(promptstr)
-                        };
-                        ed.readline(&*get_formatted_readline_prompt(&cm))
-                    }
-                    _ => Err(ReadlineError::Utf8Error),
-                }
-            }
-            Err(e) => Err(ReadlineError::Utf8Error),
-        }
-    };
 
-    let admin = || {
-        let mut readline = read("admin ");
+    let mut admin = || {
+        let prompt = format!("{}{}", &(config.username).blue(), " >> ".blue());
         loop {
+            let readline = rl.readline(&*prompt);
             match readline {
                 Ok(line) => {
-                    match &*line {
-                        "b" | "back" => {
-                            let ct = commands_tree.write();
-                            match ct {
-                                Ok(mut c) => {
-                                    (*c).pop();
-                                }
-                                _ => {}
-                            }
-                            break;
+                    if config.history {
+                        rl.add_history_entry(line.as_str());
+                    }
+                    let mut toks = line.split(' ').fuse();
+                    match toks.next() {
+                        Some("b") | Some("back") => {
+                            clean_exit();
                         }
 
-                        "create" => {
+                        Some("create") => {
                             let name: String = Input::new()
                                 .with_prompt("Questionnaire name")
                                 .interact_text()
@@ -181,23 +272,29 @@ fn main() {
                                 .interact_text()
                                 .unwrap();
 
-                            // TODO add a config option that switches headless on / off
-
-                            /* HEADLESS let image: String = Input::new()
-                            .with_prompt("Image [ex. /home/ale/Desktop/img.jpeg]")
-                            .interact_text()
-                            .unwrap();*/
-
-                            println!("Loaading image picker.. ");
-                            let image = FileDialog::new()
+                            let image_picker = FileDialog::new()
                                 .set_location("~/Desktop")
                                 .add_filter("Image", &["png", "jpg", "jpeg", "heic"])
-                                .show_open_single_file()
-                                .unwrap()
-                                .unwrap()
-                                .into_os_string()
-                                .into_string()
-                                .unwrap();
+                                .show_open_single_file();
+
+                            let image: String;
+
+                            // checks if image picker errors out, for example on an headless machine
+
+                            if image_picker.is_err() {
+                                image = Input::new()
+                                    .with_prompt("Image [ex. /home/ale/Desktop/img.jpeg]")
+                                    .interact_text()
+                                    .unwrap();
+                            } else {
+                                println!("Loading image picker.. ");
+                                image = image_picker
+                                    .unwrap()
+                                    .unwrap()
+                                    .into_os_string()
+                                    .into_string()
+                                    .unwrap();
+                            }
 
                             let mut questions: Vec<String> = Vec::new();
                             let mut question: String;
@@ -226,37 +323,162 @@ fn main() {
                                     "{}",
                                     "Questionnaire submitted successfully!".bright_green()
                                 );
-                                break;
                             } else {
                                 println!("{}", "Questionnaire submission failed!".bright_red());
                             }
                         }
 
-                        "list" => {
-                            let start: String = Input::new()
-                                .with_prompt("Start from [default: 0]")
-                                .default("0".into())
-                                .interact_text()
-                                .unwrap();
-                            let size: String = Input::new()
-                                .with_prompt("Size (10,25,50,100")
-                                .default("100".into())
-                                .interact_text()
-                                .unwrap();
-                            if !list(&client, start, size, false) {
+                        Some("list") => {
+                            let mut start: String = String::from("");
+                            let mut size: String = String::from("");
+                            let mut past: String = String::from("");
+
+                            let mut initialized: [bool; 3] = [false, false, false];
+                            loop {
+                                match toks.next() {
+                                    Some(a) => match a {
+                                        "default" => {
+                                            start = "0".to_string();
+                                            size = "100".to_string();
+                                            past = "n".to_string();
+                                            initialized = [true, true, true];
+                                            break;
+                                        }
+                                        "start" => {
+                                            if initialized[0] {
+                                                break;
+                                            }
+                                            let x = toks.next();
+                                            if x.is_none() {
+                                                break;
+                                            } else {
+                                                start = x.unwrap().to_string();
+                                                initialized[0] = true;
+                                            }
+                                        }
+                                        "size" => {
+                                            if initialized[1] {
+                                                break;
+                                            }
+                                            let x = toks.next();
+                                            if x.is_none() {
+                                                break;
+                                            } else {
+                                                size = x.unwrap().to_string();
+                                                initialized[1] = true;
+                                            }
+                                        }
+                                        "past" => {
+                                            if initialized[2] {
+                                                break;
+                                            }
+                                            let x = toks.next();
+                                            if x.is_none() {
+                                                break;
+                                            } else {
+                                                past = x.unwrap().to_string();
+                                                initialized[2] = true;
+                                            }
+                                        }
+                                        _ => break,
+                                    },
+                                    None => break,
+                                }
+                            }
+
+                            if !initialized[0] {
+                                start = Input::new()
+                                    .with_prompt("Start from [default: 0]")
+                                    .default("0".into())
+                                    .interact_text()
+                                    .unwrap();
+                            }
+                            if !initialized[1] {
+                                size = Input::new()
+                                    .with_prompt("Size (10,25,50,100)")
+                                    .default("100".into())
+                                    .interact_text()
+                                    .unwrap();
+                            }
+                            if !initialized[2] {
+                                past = Input::new()
+                                    .with_prompt("Only past questionnaires? (y/n)")
+                                    .default("n".into())
+                                    .interact_text()
+                                    .unwrap();
+                            }
+                            let p: bool = (&past).to_lowercase().contains(|c| c == 'y' || c == 't');
+
+                            if !list(&client, &start, &size, p) {
                                 println!("{}", "Error retrieving list".red());
                             }
                         }
 
-                        "Ctrl-C" | "Ctrl-D" => clean_exit(),
+                        Some("inspect") => {
+                            let id: String = Input::new()
+                                .with_prompt("Questionnaire ID [default: 0]")
+                                .default("0".into())
+                                .interact_text()
+                                .unwrap();
+                            let canceled: String = Input::new()
+                                .with_prompt("Canceled users?")
+                                .default("n".into())
+                                .interact_text()
+                                .unwrap();
+
+                            let p: bool = canceled.to_lowercase().contains("y");
+
+                            match inspect(&client, &id, p) {
+                                Ok(uId) => {
+                                    if uId == -1 {
+                                        let word = match p {
+                                            true => "canceled",
+                                            _ => "answered",
+                                        };
+                                        println!(
+                                            "{0} {1} {2}",
+                                            "No one".blue(),
+                                            word.blue(),
+                                            "yet!".blue()
+                                        );
+                                    } else {
+                                        showAnswers(&client, &id, uId);
+                                    }
+                                }
+                                Err(e) => {}
+                            };
+                        }
+
+                        Some("delete") => {
+                            let id: String = Input::new()
+                                .with_prompt("Questionnaire ID")
+                                .interact_text()
+                                .unwrap();
+
+                            if !delete(&client, &id) {
+                                println!("{}", "Deletion failed.".bright_red());
+                            } else {
+                                println!(
+                                    "{}{}{}",
+                                    "OK! Questionnaire".bright_green(),
+                                    &id.to_string().bright_green(),
+                                    "deleted.".bright_green()
+                                );
+                            }
+                        }
+
+                        Some("Ctrl-C") | Some("Ctrl-D") => clean_exit(),
 
                         _ => help("admin"),
                     };
+                    if config.history {
+                        rl.save_history(".gamify_history.txt").unwrap();
+                    }
                     print!("\n");
                 }
                 Err(ReadlineError::Interrupted) => {
                     clean_exit();
-                }
+                },
                 _ => {
                     println!(
                         "{}",
@@ -266,56 +488,44 @@ fn main() {
                     )
                 }
             }
-            readline = read("");
         }
     };
 
-    loop {
-        let readline = read("");
-        match readline {
-            Ok(line) => {
-                match &*line {
-                    "CTRL+C" | "CTRL+D" | "SHIFT+B" => {
-                        clean_exit();
-                    }
-
-                    "admin" => admin(),
-
-                    "user" => {}
-
-                    _ => help("na"),
-                };
-            }
-            Err(ReadlineError::Interrupted) => {
-                clean_exit();
-            }
-            _ => {
-                println!(
-                    "{}",
-                    "Error in command. Please enter correct command or press CTRL+C to exit"
-                        .bold()
-                        .red()
-                )
-            }
-        }
+    match role {
+        "admin" => admin(),
+        _ => {}
     }
 }
 
-fn login(client: &Client, username: String, password: String) -> bool {
+fn login(client: &Client, username: &String, password: &String) -> Result<String, ()> {
     let params = [("username", username), ("pwd", password)];
     let res = client
         .post(&format!("{}{}", ENDPOINT::BASE_LINK, ENDPOINT::LOGIN))
         .form(&params)
         .timeout(Duration::from_secs(10))
         .send();
-    match res.unwrap().status() {
-        StatusCode::OK => return true,
-        _ => return false,
+    if res.is_err() {
+        println!(
+            "{}{}{}",
+            "Server ".bright_red(),
+            ENDPOINT::BASE_LINK.bright_red(),
+            " unreachable.".bright_red()
+        );
+        exit(0);
+    }
+    let res1 = res.unwrap();
+    match res1.status() {
+        StatusCode::OK => return Ok(res1.text().unwrap()),
+        _ => return Err(()),
     };
 }
 
-fn list(client: &Client, start: String, size: String, past: bool) -> bool {
-    let params = [("start", start), ("size", size), ("past", past.to_string())];
+fn list(client: &Client, start: &String, size: &String, past: bool) -> bool {
+    let params = [
+        ("start", start),
+        ("size", size),
+        ("past", &past.to_string()),
+    ];
     let res = client
         .get(&format!("{}{}", ENDPOINT::BASE_LINK, ENDPOINT::ADMIN_LIST))
         .query(&params)
@@ -334,6 +544,89 @@ fn list(client: &Client, start: String, size: String, past: bool) -> bool {
         }
         _ => return false,
     };
+}
+
+fn showAnswers(client: &Client, questionnaireId: &String, userId: i32) {
+    let params = [
+        ("questionnaireId", questionnaireId),
+        ("userId", &userId.to_string()),
+    ];
+    let res = client
+        .get(&format!(
+            "{}{}",
+            ENDPOINT::BASE_LINK,
+            ENDPOINT::ADMIN_ANSWERS_RETRIEVAL
+        ))
+        .query(&params)
+        .timeout(Duration::from_secs(10))
+        .send();
+
+    if res.is_err() {
+        println!("{}", "Error retrieving answers.".red());
+    } else {
+        let r: AnswerList = res.unwrap().json().unwrap();
+        println!("{}", r);
+    }
+}
+
+fn inspect(client: &Client, id: &String, canceled: bool) -> Result<i32, ()> {
+    let params = [("id", id.as_str()), ("start", "0"), ("size", "100")];
+    let endpoint = match canceled {
+        true => ENDPOINT::ADMIN_INSPECT_CANCELED,
+        _ => ENDPOINT::ADMIN_INSPECT,
+    };
+
+    let res = client
+        .get(&format!("{}{}", ENDPOINT::BASE_LINK, endpoint))
+        .query(&params)
+        .timeout(Duration::from_secs(10))
+        .send();
+    if res.is_err() {
+        return Err(());
+    }
+    let res1 = res.unwrap();
+    match res1.status() {
+        StatusCode::OK => {
+            let result: Vec<User> = res1.json().unwrap();
+            if result.is_empty() {
+                return Ok(-1);
+            }
+            const PROMPT: &str =
+                "  ┌─ ID ──┬───────────── Name ─────────────┬────── Birth ─────┬── Sex ──┐";
+
+            let multiselected: Vec<String> = (&result).iter().map(|u| format!("{}", u)).collect();
+            let mut selection = Select::new()
+                .with_prompt(PROMPT)
+                .items(&multiselected[..])
+                .interact();
+
+            while selection.is_err() {
+                selection = Select::new()
+                    .with_prompt(PROMPT)
+                    .items(&multiselected[..])
+                    .interact();
+            }
+
+            return Ok(result[selection.unwrap()].userId);
+        }
+        _ => return Err(()),
+    };
+}
+
+fn delete(client: &Client, id: &String) -> bool {
+    let res = client
+        .delete(&format!(
+            "{}{}",
+            ENDPOINT::BASE_LINK,
+            ENDPOINT::ADMIN_DELETE
+        ))
+        .query(&[("id", id.as_str())])
+        .timeout(Duration::from_secs(10))
+        .send();
+    if res.is_err() {
+        return false;
+    }
+    return res.unwrap().status() == StatusCode::OK;
 }
 
 fn create_questionnaire(

@@ -1,2 +1,4 @@
 username: "mr"
 password: "robot"
+debug: false
+history: true

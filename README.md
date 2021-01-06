@@ -4,5 +4,8 @@ Gamify-rust is a CLI interface for https://github.com/LudoLe/GamifyUser (univers
 
 ## Implemented functionalities
 
-admin: create, list
+admin: create, list, delete
+
+
+
 user: none

@@ -1,3 +1,5 @@
+#![allow(non_snake_case)]
+
 use colored::Colorize;
 use dialoguer::{Confirm, Input, Select};
 use figlet_rs::FIGfont;
@@ -9,21 +11,13 @@ use reqwest::{
 };
 use rustyline::error::ReadlineError;
 use serde::Deserialize;
-use std::{env, fmt::Display, process::exit, time::Duration, vec};
+use std::{env, fmt::Display, process::exit, time::Duration};
 extern crate term_size;
-
-lazy_static! {
-    static ref USER_AGENT: String = format!(
-        "gamify-rust / {} / {}",
-        env!("CARGO_PKG_VERSION"),
-        env::consts::OS
-    );
-}
 
 #[non_exhaustive]
 struct ENDPOINT;
 impl ENDPOINT {
-    const BASE_LINK: &'static str = "http://localhost:8080/GamifyUser/";
+    const DEFAULT_BASE_LINK: &'static str = "http://localhost:8080/GamifyUser/";
     const CAMPAIGN_IMAGES: &'static str = "uploads/campaignImages/";
     const LOGIN: &'static str = "CheckLogin";
     const ADMIN_LIST: &'static str = "admin/listQuestionnaires";
@@ -32,6 +26,32 @@ impl ENDPOINT {
     const ADMIN_INSPECT: &'static str = "admin/listQuestionnaireCompletedUsers";
     const ADMIN_INSPECT_CANCELED: &'static str = "admin/listQuestionnaireCanceledUsers";
     const ADMIN_ANSWERS_RETRIEVAL: &'static str = "admin/getAnswers";
+}
+
+lazy_static! {
+    static ref USER_AGENT: String = format!(
+        "gamify-rust / {} / {}",
+        env!("CARGO_PKG_VERSION"),
+        env::consts::OS
+    );
+    //static ref BASE_LINK: &'static str = "asd";
+    // read config
+    static ref CONFIG: Config = {
+        let f = std::fs::File::open("config.yaml").expect("Config file not found");
+        serde_yaml::from_reader(f).expect("Config not readable")
+    };
+    static ref TERMINAL_DIMENSIONS: (usize, usize) = {
+        if let Some((w, h)) = term_size::dimensions() {
+            (w,h)
+        } else {
+            if CONFIG.debug {
+                println!("Unable to get term size :(")
+            }
+            (137, 35)
+        }
+    };
+
+
 }
 
 #[derive(Deserialize)]
@@ -54,15 +74,6 @@ struct OptionalAnswer {
     content: String,
 }
 
-impl std::fmt::Debug for OptionalAnswer {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Question: {0}, Answer: {1}\n",
-            self.question, self.content
-        )
-    }
-}
 #[derive(Deserialize)]
 struct User {
     userId: i32,
@@ -71,59 +82,19 @@ struct User {
     username: String,
 }
 
-impl Display for AnswerList {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut stats: Vec<String> = vec![];
-        for s in &self.stats {
-            let mut sp: String = "N/A".to_string();
-            if s.is_some() {
-                sp = s.as_deref().unwrap().to_string();
-            }
-            stats.push(sp);
-        }
-        let mut _x = write!(
-            f,
-            "{}",
-            "\n ~~~~~~~ Statistical answers ~~~~~~\n\n"
-                .bold()
-                .bright_blue()
-        );
-        _x = write!(
-            f,
-            "Age: {}, Sex: {}, Experience: {}\n\n",
-            stats[0], stats[1], stats[2]
-        );
-        _x = write!(
-            f,
-            "{}",
-            " ~~~~~~~   Optional answers  ~~~~~~\n\n"
-                .bold()
-                .bright_blue()
-        );
-        write!(f, "{:?}", self.opt)
-    }
-}
-
-impl Display for Questionnaire {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let date0: Vec<&str> = self.datetime.split(",").collect();
-        let datel = format!("{} {}", date0[0], date0[1]);
-
-        write!(
-            f,
-            "│ {: ^5} │ {: ^30} │ {: >16} │",
-            &self.questionnaireId.to_string().blue(),
-            &self.name.bright_blue().bold(),
-            format! {"{}", datel},
-        )
-    }
-}
 #[derive(Debug, Deserialize)]
 struct Config {
     username: String,
     password: String,
     debug: bool,
     history: bool,
+    #[serde(default = "default_base_link")]
+    #[serde(alias = "baselink")]
+    base_link: String,
+}
+
+fn default_base_link() -> String {
+    ENDPOINT::DEFAULT_BASE_LINK.to_string()
 }
 
 impl Display for User {
@@ -145,21 +116,8 @@ impl Display for User {
 }
 
 fn main() {
-    // read config
-    let f = std::fs::File::open("config.yaml").expect("Config file not found");
-    let config: Config = serde_yaml::from_reader(f).expect("Config not readable");
-
-    let mut terminal_dimensions;
-    if let Some((w, h)) = term_size::dimensions() {
-        terminal_dimensions = (w, h);
-        if config.debug {
-            println!("Terminal dimensions: {:#?}", terminal_dimensions);
-        }
-    } else {
-        if config.debug {
-            println!("Unable to get term size :(")
-        }
-        terminal_dimensions = (137, 35);
+    if CONFIG.debug {
+        println!("Terminal dimensions: {:#?}", &*TERMINAL_DIMENSIONS);
     }
 
     println!(
@@ -170,7 +128,7 @@ fn main() {
         "Press CTRL+C to exit or anything to get help."
             .italic()
             .white(),
-        width = terminal_dimensions.0,
+        width = TERMINAL_DIMENSIONS.0,
     );
 
     let ascii_font = FIGfont::from_file("resources/isometric3.flf").unwrap();
@@ -178,8 +136,8 @@ fn main() {
     let mut rl = rustyline::Editor::<()>::new();
 
     // try and load history file if history option is on
-    if config.history {
-        if rl.load_history(".gamify_history.txt").is_err() && config.debug {
+    if CONFIG.history {
+        if rl.load_history(".gamify_history.txt").is_err() && CONFIG.debug {
             println!("No previous history.");
         }
     }
@@ -196,18 +154,18 @@ fn main() {
     let mut role: &str = "admin";
     let foo: String;
 
-    match login(&client, &config.username, &config.password) {
+    match login(&client, &CONFIG.username, &CONFIG.password) {
         Ok(res) => {
             foo = res.clone();
             role = foo.strip_prefix("/GamifyUser/").unwrap();
-            if config.debug {
+            if CONFIG.debug {
                 println!("{}", "Login OK".bold().green());
             }
-            if (config.username.len() + 3) <= (terminal_dimensions.0 as f64 / 13.6) as usize {
+            if (CONFIG.username.len() + 3) <= (TERMINAL_DIMENSIONS.0 as f64 / 13.6) as usize {
                 println!(
                     "{}",
                     ascii_font
-                        .convert(format!("Hi {}", config.username).as_str())
+                        .convert(format!("Hi {}", CONFIG.username).as_str())
                         .unwrap()
                         .to_string()
                         .blue()
@@ -217,7 +175,7 @@ fn main() {
                     "{}\n{}",
                     ascii_font.convert("Hi").unwrap().to_string().blue(),
                     ascii_font
-                        .convert(format!("{}", config.username).as_str())
+                        .convert(format!("{}", CONFIG.username).as_str())
                         .unwrap()
                         .to_string()
                         .blue()
@@ -254,12 +212,12 @@ fn main() {
     };
 
     let mut admin = || {
-        let prompt = format!("{}{}", &(config.username).blue(), " >> ".blue());
+        let prompt = format!("{}{}", &(CONFIG.username).blue(), " >> ".blue());
         loop {
             let readline = rl.readline(&*prompt);
             match readline {
                 Ok(line) => {
-                    if config.history {
+                    if CONFIG.history {
                         rl.add_history_entry(line.as_str());
                     }
                     let mut toks = line.split(' ').fuse();
@@ -378,11 +336,10 @@ fn main() {
                                             if initialized[2] {
                                                 break;
                                             }
-                                                past = "y".to_string();
-                                                initialized[2] = true;
-                                            
+                                            past = "y".to_string();
+                                            initialized[2] = true;
                                         }
-                                        _ => break
+                                        _ => break,
                                     },
                                     None => break,
                                 }
@@ -411,7 +368,7 @@ fn main() {
                             }
                             let p: bool = (&past).to_lowercase().contains(|c| c == 'y' || c == 't');
 
-                            if !list(&client, &start, &size, p, &terminal_dimensions) {
+                            if !list(&client, &start, &size, p) {
                                 println!("{}", "Error retrieving list".red());
                             }
                         }
@@ -467,7 +424,7 @@ fn main() {
                                         showAnswers(&client, &id, uId);
                                     }
                                 }
-                                Err(e) => {
+                                Err(_) => {
                                     print!("{}", "Error in retrieving data. You probably provided a non-existent id. ಠ_ಠ".bright_red());
                                 }
                             };
@@ -495,7 +452,7 @@ fn main() {
 
                         _ => help("admin"),
                     };
-                    if config.history {
+                    if CONFIG.history {
                         rl.save_history(".gamify_history.txt").unwrap();
                     }
                     print!("\n");
@@ -524,7 +481,7 @@ fn main() {
 fn login(client: &Client, username: &String, password: &String) -> Result<String, ()> {
     let params = [("username", username), ("pwd", password)];
     let res = client
-        .post(&format!("{}{}", ENDPOINT::BASE_LINK, ENDPOINT::LOGIN))
+        .post(&format!("{}{}", CONFIG.base_link, ENDPOINT::LOGIN))
         .form(&params)
         .timeout(Duration::from_secs(10))
         .send();
@@ -532,7 +489,7 @@ fn login(client: &Client, username: &String, password: &String) -> Result<String
         print!(
             "{}{}{}",
             "Server ".bright_red(),
-            ENDPOINT::BASE_LINK.bright_red(),
+            CONFIG.base_link.bright_red(),
             " unreachable.".bright_red()
         );
         exit(0);
@@ -544,20 +501,14 @@ fn login(client: &Client, username: &String, password: &String) -> Result<String
     };
 }
 
-fn list(
-    client: &Client,
-    start: &String,
-    size: &String,
-    past: bool,
-    terminal_dimensions: &(usize, usize),
-) -> bool {
+fn list(client: &Client, start: &String, size: &String, past: bool) -> bool {
     let params = [
         ("start", start),
         ("size", size),
         ("past", &past.to_string()),
     ];
     let res = client
-        .get(&format!("{}{}", ENDPOINT::BASE_LINK, ENDPOINT::ADMIN_LIST))
+        .get(&format!("{}{}", CONFIG.base_link, ENDPOINT::ADMIN_LIST))
         .query(&params)
         .timeout(Duration::from_secs(10))
         .send();
@@ -568,7 +519,7 @@ fn list(
             println!(
                 "{:^width$}",
                 "┌─ ID ──┬───────────── Name ─────────────┬────── Date ──────┐",
-                width = terminal_dimensions.0
+                width = TERMINAL_DIMENSIONS.0
             );
             for r in result {
                 let date0: Vec<&str> = r.datetime.split(",").collect();
@@ -582,13 +533,13 @@ fn list(
                         format!("│ {:^30} ", r.name.bright_blue().bold()),
                         format!("│ {:>16} │", format! {"{}", datel})
                     ),
-                    width = terminal_dimensions.0 + 20
+                    width = TERMINAL_DIMENSIONS.0 + 20
                 );
             }
             println!(
                 "{:^width$}",
                 "└─ ID ──┴───────────── Name ─────────────┴────── Date ──────┘",
-                width = terminal_dimensions.0
+                width = TERMINAL_DIMENSIONS.0
             );
             return true;
         }
@@ -604,7 +555,7 @@ fn showAnswers(client: &Client, questionnaireId: &String, userId: i32) {
     let res = client
         .get(&format!(
             "{}{}",
-            ENDPOINT::BASE_LINK,
+            CONFIG.base_link,
             ENDPOINT::ADMIN_ANSWERS_RETRIEVAL
         ))
         .query(&params)
@@ -615,7 +566,69 @@ fn showAnswers(client: &Client, questionnaireId: &String, userId: i32) {
         print!("{}", "Error retrieving answers.".red());
     } else {
         let r: AnswerList = res.unwrap().json().unwrap();
-        println!("{}", r);
+
+        let line = format!(
+            "{}{}{}",
+            format!(
+                "Age: {}, ",
+                r.stats
+                    .get(0)
+                    .unwrap_or(&None)
+                    .clone()
+                    .unwrap_or("N/A".to_string())
+                    .bright_purple()
+            ),
+            format!(
+                "Sex: {}, ",
+                r.stats
+                    .get(1)
+                    .unwrap_or(&None)
+                    .clone()
+                    .unwrap_or("N/A".to_string())
+                    .bright_purple()
+            ),
+            format!(
+                "Exp: {}",
+                r.stats
+                    .get(2)
+                    .unwrap_or(&None)
+                    .clone()
+                    .unwrap_or("N/A".to_string())
+                    .bright_purple()
+            )
+        );
+
+        println!(
+            "\n{:~^width$}",
+            " Statistical answers ",
+            width = TERMINAL_DIMENSIONS.0
+        );
+
+        println!("\n{:^width$}\n", line, width = TERMINAL_DIMENSIONS.0 + 27);
+
+        println!(
+            "{:~^width$}\n",
+            " Optional answers ",
+            width = TERMINAL_DIMENSIONS.0
+        );
+
+        println!("{:width$}", "".on_purple(), width = TERMINAL_DIMENSIONS.0);
+
+        for x in r.opt {
+            println!(
+                "{:^width$}",
+                x.question.bright_yellow(),
+                width = TERMINAL_DIMENSIONS.0
+            );
+            println!(
+                "{:^width$}",
+                x.content.bright_white(),
+                width = TERMINAL_DIMENSIONS.0
+            );
+            println!("{:width$}", "".on_purple(), width = TERMINAL_DIMENSIONS.0);
+        }
+
+        println!("\n{:~^width$}", "", width = TERMINAL_DIMENSIONS.0);
     }
 }
 
@@ -627,7 +640,7 @@ fn inspect(client: &Client, id: &String, canceled: bool) -> Result<i32, ()> {
     };
 
     let res = client
-        .get(&format!("{}{}", ENDPOINT::BASE_LINK, endpoint))
+        .get(&format!("{}{}", CONFIG.base_link, endpoint))
         .query(&params)
         .timeout(Duration::from_secs(10))
         .send();
@@ -642,12 +655,13 @@ fn inspect(client: &Client, id: &String, canceled: bool) -> Result<i32, ()> {
                 return Ok(-1);
             }
             const PROMPT: &str =
-                "  ┌─ ID ──┬───────────── Name ─────────────┬────── Birth ─────┬── Sex ──┐";
+                "   ─ ID ──┬───────────── Name ─────────────┬────── Birth ─────┬── Sex ── ";
 
             let multiselected: Vec<String> = (&result).iter().map(|u| format!("{}", u)).collect();
             let mut selection = Select::new()
                 .with_prompt(PROMPT)
                 .items(&multiselected[..])
+                .clear(true)
                 .interact();
 
             while selection.is_err() {
@@ -665,11 +679,7 @@ fn inspect(client: &Client, id: &String, canceled: bool) -> Result<i32, ()> {
 
 fn delete(client: &Client, id: &String) -> bool {
     let res = client
-        .delete(&format!(
-            "{}{}",
-            ENDPOINT::BASE_LINK,
-            ENDPOINT::ADMIN_DELETE
-        ))
+        .delete(&format!("{}{}", CONFIG.base_link, ENDPOINT::ADMIN_DELETE))
         .query(&[("id", id.as_str())])
         .timeout(Duration::from_secs(10))
         .send();
@@ -695,7 +705,7 @@ fn create_questionnaire(
     let mut counter: usize = 0;
 
     //TODO Find better way of doing this
-    const qnames: [&str; 6] = [
+    const QNAMES: [&str; 6] = [
         "Question0",
         "Question1",
         "Question2",
@@ -705,15 +715,11 @@ fn create_questionnaire(
     ];
 
     for q in questions {
-        form = form.text(qnames[counter], q);
+        form = form.text(QNAMES[counter], q);
         counter += 1;
     }
     let res = client
-        .post(&format!(
-            "{}{}",
-            ENDPOINT::BASE_LINK,
-            ENDPOINT::ADMIN_CREATE
-        ))
+        .post(&format!("{}{}", CONFIG.base_link, ENDPOINT::ADMIN_CREATE))
         .multipart(form)
         .send();
 

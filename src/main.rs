@@ -293,51 +293,46 @@ fn main() {
                         }
 
                         Some("list") => {
-                            let mut start: String = String::from("0");
-                            let mut size: String = String::from("100");
-                            let mut past: String = String::from("n");
+                            let mut start: Option<String> = None;
+                            let mut size: Option<String> = None;
+                            let mut past: Option<String> = None;
 
-                            let mut initialized: [bool; 3] = [false, false, false];
                             loop {
                                 match toks.next() {
                                     Some(a) => match a {
                                         "d" | "default" => {
-                                            initialized[0] = true;
-                                            initialized[1] = true;
-                                            initialized[2] = true;
-
+                                            start = Some("0".to_string());
+                                            size = Some("100".to_string());
+                                            past = Some("y".to_string());
                                             break;
-                                        }
+                                        },
                                         "start" => {
-                                            if initialized[0] {
+                                            if start.is_some() {
                                                 break;
                                             }
                                             let x = toks.next();
                                             if x.is_none() {
                                                 break;
                                             } else {
-                                                start = x.unwrap().to_string();
-                                                initialized[0] = true;
+                                                start = Some(x.unwrap().to_string());
                                             }
-                                        }
+                                        },
                                         "size" => {
-                                            if initialized[1] {
+                                            if size.is_some() {
                                                 break;
                                             }
                                             let x = toks.next();
                                             if x.is_none() {
                                                 break;
                                             } else {
-                                                size = x.unwrap().to_string();
-                                                initialized[1] = true;
+                                                size = Some(x.unwrap().to_string());
                                             }
-                                        }
+                                        },
                                         "past" => {
-                                            if initialized[2] {
+                                            if past.is_some() {
                                                 break;
                                             }
-                                            past = "y".to_string();
-                                            initialized[2] = true;
+                                            past = Some("y".to_string());
                                         }
                                         _ => break,
                                     },
@@ -345,30 +340,30 @@ fn main() {
                                 }
                             }
 
-                            if !initialized[0] {
-                                start = Input::new()
+                            if start.is_none() {
+                                start = Some(Input::new()
                                     .with_prompt("Start from [default: 0]")
                                     .default("0".into())
                                     .interact_text()
-                                    .unwrap();
+                                    .unwrap());
                             }
-                            if !initialized[1] {
-                                size = Input::new()
+                            if size.is_none() {
+                                size = Some(Input::new()
                                     .with_prompt("Size (10,25,50,100)")
                                     .default("100".into())
                                     .interact_text()
-                                    .unwrap();
+                                    .unwrap());
                             }
-                            if !initialized[2] {
-                                past = Input::new()
+                            if past.is_none() {
+                                past = Some(Input::new()
                                     .with_prompt("Only past questionnaires? (y/n)")
                                     .default("n".into())
                                     .interact_text()
-                                    .unwrap();
+                                    .unwrap());
                             }
-                            let p: bool = (&past).to_lowercase().contains(|c| c == 'y' || c == 't');
+                            let p: bool = past.unwrap().to_lowercase().contains(|c| c == 'y' || c == 't');
 
-                            if !list(&client, &start, &size, p) {
+                            if !list(&client, &start.unwrap(), &size.unwrap(), p) {
                                 println!("{}", "Error retrieving list".red());
                             }
                         }
@@ -431,19 +426,32 @@ fn main() {
                         }
 
                         Some("delete") => {
-                            let id: String = Input::new()
+                            let mut id: Option<String> = None;
+                            match toks.next() {
+                                Some(a) => {
+                                    id = Some(a.to_string());
+                                }
+                                None => {},
+                            }
+                            if id.is_none() {
+                                id = Some(Input::new()
                                 .with_prompt("Questionnaire ID")
                                 .interact_text()
-                                .unwrap();
+                                .unwrap());
+                            }
+                    
+                            if id.is_none() {
+                                println!("{}", "Please insert an id.".red());
+                            }
 
-                            if !delete(&client, &id) {
+                            else if !delete(&client, &id.clone().unwrap()) {
                                 print!("{}", "Deletion failed.".bright_red());
                             } else {
                                 print!(
                                     "{}{}{}",
-                                    "OK! Questionnaire".bright_green(),
-                                    &id.to_string().bright_green(),
-                                    "deleted.".bright_green()
+                                    "OK! Questionnaire ".bright_green(),
+                                    &id.unwrap().to_string().bright_green(),
+                                    " deleted.".bright_green()
                                 );
                             }
                         }

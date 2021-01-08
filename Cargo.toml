@@ -1,6 +1,6 @@
 [package]
 name = "gamify-rust"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["darklamp <alessandro17.villa@mail.polimi.it>"]
 edition = "2018"
 

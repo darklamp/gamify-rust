@@ -2,3 +2,4 @@ username: "mr"
 password: "robot"
 debug: false
 history: true
+baselink: "http://localhost:8080/GamifyUser/"

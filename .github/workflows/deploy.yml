@@ -6,7 +6,7 @@ on:
 
 name: gamify-rust deploy
 env:
-  BIN: gamify-cli
+  BIN: gamify-rust
 
 jobs:
   # This job downloads and stores `cross` as an artifact, so that it can be
@@ -134,7 +134,7 @@ jobs:
           - x86_64-unknown-linux-gnu
     steps:
       - name: Install openSSL
-        run: sudo apt install libssl-dev
+        run: sudo apt install libssl-dev pkg-config
       - uses: actions/checkout@v2
       - uses: actions/download-artifact@v1
         with:

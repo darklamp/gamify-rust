@@ -6,7 +6,7 @@ on:
 
 name: gamify-rust deploy
 env:
-  BIN: gamify-cli
+  BIN: gamify-rust
 
 jobs:
   # This job downloads and stores `cross` as an artifact, so that it can be
@@ -49,6 +49,13 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - run: bash ci/set_rust_version.bash stable ${{ matrix.target }}
+      - uses: actions/cache@v2
+        with:
+          path: |
+             ~/.cargo/registry
+             ~/.cargo/git
+             target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       - run: bash ci/build.bash cargo ${{ matrix.target }} RELEASE
       - run: |
           cd ./target/${{ matrix.target }}/release/
@@ -101,6 +108,13 @@ jobs:
       - run: chmod +x /usr/local/bin/cross
 
       - run: ci/set_rust_version.bash stable ${{ matrix.target }}
+      - uses: actions/cache@v2
+        with:
+          path: |
+             ~/.cargo/registry
+             ~/.cargo/git
+             target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       - run: ci/build.bash cross ${{ matrix.target }} RELEASE
       - run: tar -czvf ${{ env.BIN }}.tar.gz --directory=target/${{ matrix.target }}/release ${{ env.BIN }}
       - uses: XAMPPRocky/create-release@v1.0.2
@@ -133,6 +147,8 @@ jobs:
           # Linux
           - x86_64-unknown-linux-gnu
     steps:
+      - name: Install openSSL
+        run: sudo apt install libssl-dev pkg-config
       - uses: actions/checkout@v2
       - uses: actions/download-artifact@v1
         with:
@@ -141,6 +157,13 @@ jobs:
       - run: chmod +x /tmp/cross
 
       - run: ci/set_rust_version.bash stable ${{ matrix.target }}
+      - uses: actions/cache@v2
+        with:
+          path: |
+             ~/.cargo/registry
+             ~/.cargo/git
+             target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       - run: ci/build.bash /tmp/cross ${{ matrix.target }} RELEASE
       - run: tar -czvf ${{ env.BIN }}.tar.gz --directory=target/${{ matrix.target }}/release ${{ env.BIN }}
       - uses: XAMPPRocky/create-release@v1.0.2
